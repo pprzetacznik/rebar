@@ -518,8 +518,14 @@ filter_env([{ArchRegex, Key, Value} | Rest], Acc) ->
 filter_env([{Key, Value} | Rest], Acc) ->
     filter_env(Rest, [{Key, Value} | Acc]).
 
+erts_dir_short() ->
+    lists:concat([code:root_dir(), "/erts"]).
+
 erts_dir() ->
-    lists:concat([code:root_dir(), "/erts-", erlang:system_info(version)]).
+    lists:concat([erts_dir_short(), "-", erlang:system_info(version)]).
+
+otp18_target() ->
+    os:cmd("$ERL_TOP/erts/autoconf/config.guess | tr -d '\n'").
 
 os_env() ->
     ReOpts = [{return, list}, {parts, 2}, unicode],
@@ -569,6 +575,9 @@ erl_interface_dir(Subdir) ->
         Dir -> Dir
     end.
 
+erl_interface_dir_otp18() ->
+    filename:join([code:root_dir(), "lib", "erl_interface", "obj", otp18_target()]).
+
 default_env() ->
     Arch = os:getenv("REBAR_TARGET_ARCH"),
     Vsn = os:getenv("REBAR_TARGET_ARCH_VSN"),
@@ -606,10 +615,14 @@ default_env() ->
                       [
                        " -I\"", erl_interface_dir(include),
                        "\" -I\"", filename:join(erts_dir(), "include"),
+                       "\" -I\"", filename:join(erts_dir_short(), "include"),
+                       "\" -I\"", filename:join([erts_dir_short(), "include", otp18_target()]),
+                       "\" -I\"", filename:join([erts_dir_short(), "emulator", "beam"]),
                        "\" "
                       ])},
      {"ERL_EI_LIBDIR", lists:concat(["\"", erl_interface_dir(lib), "\""])},
-     {"ERL_LDFLAGS"  , " -L$ERL_EI_LIBDIR -lerl_interface -lei"},
+     {"ERL_EI_LIBDIR2", lists:concat(["\"", erl_interface_dir_otp18(), "\""])},
+     {"ERL_LDFLAGS"  , " -L$ERL_EI_LIBDIR -L$ERL_EI_LIBDIR2 -lerl_interface -lei"},
      {"ERLANG_ARCH"  , rebar_utils:wordsize()},
      {"ERLANG_TARGET", rebar_utils:get_arch()},
 
