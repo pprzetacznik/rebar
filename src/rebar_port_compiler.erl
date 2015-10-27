@@ -524,8 +524,19 @@ erts_dir_short() ->
 erts_dir() ->
     lists:concat([erts_dir_short(), "-", erlang:system_info(version)]).
 
-otp18_target() ->
+otp_src_target() ->
     os:cmd("$ERL_TOP/erts/autoconf/config.guess | tr -d '\n'").
+
+is_subdir(_Dir, false) ->
+    install;
+is_subdir(Dir, Subdir) ->
+    case lists:prefix(Subdir, Dir) of
+        true -> src;
+        false -> install
+    end.
+
+otp_type() ->
+    is_subdir(os:find_executable("erl"), os:getenv("ERL_TOP")).
 
 os_env() ->
     ReOpts = [{return, list}, {parts, 2}, unicode],
@@ -575,8 +586,25 @@ erl_interface_dir(Subdir) ->
         Dir -> Dir
     end.
 
-erl_interface_dir_otp18() ->
-    filename:join([code:root_dir(), "lib", "erl_interface", "obj", otp18_target()]).
+erl_interface_dir_otp_src() ->
+    filename:join([code:root_dir(), "lib", "erl_interface", "obj", otp_src_target()]).
+
+erl_cflags() ->
+    case otp_type() of
+        src -> [" -I\"", filename:join(erts_dir_short(), "include"),
+                 "\" -I\"", filename:join([erts_dir_short(), "include", otp_src_target()]),
+                 "\" -I\"", filename:join([erts_dir_short(), "emulator", "beam"]),
+                 "\" "];
+        install -> [" -I\"", erl_interface_dir(include),
+                 "\" -I\"", filename:join(erts_dir(), "include"),
+                 "\" "]
+    end.
+
+erl_ei_libdir() ->
+    case otp_type() of
+        src -> erl_interface_dir_otp_src();
+        install -> erl_interface_dir(lib)
+    end.
 
 default_env() ->
     Arch = os:getenv("REBAR_TARGET_ARCH"),
@@ -611,18 +639,9 @@ default_env() ->
      {"EXE_CFLAGS" , "-g -Wall -fPIC -MMD $ERL_CFLAGS"},
      {"EXE_LDFLAGS", "$ERL_LDFLAGS"},
 
-     {"ERL_CFLAGS", lists:concat(
-                      [
-                       " -I\"", erl_interface_dir(include),
-                       "\" -I\"", filename:join(erts_dir(), "include"),
-                       "\" -I\"", filename:join(erts_dir_short(), "include"),
-                       "\" -I\"", filename:join([erts_dir_short(), "include", otp18_target()]),
-                       "\" -I\"", filename:join([erts_dir_short(), "emulator", "beam"]),
-                       "\" "
-                      ])},
-     {"ERL_EI_LIBDIR", lists:concat(["\"", erl_interface_dir(lib), "\""])},
-     {"ERL_EI_LIBDIR2", lists:concat(["\"", erl_interface_dir_otp18(), "\""])},
-     {"ERL_LDFLAGS"  , " -L$ERL_EI_LIBDIR -L$ERL_EI_LIBDIR2 -lerl_interface -lei"},
+     {"ERL_CFLAGS", lists:concat(erl_cflags())},
+     {"ERL_EI_LIBDIR", lists:concat(["\"", erl_ei_libdir(), "\""])},
+     {"ERL_LDFLAGS"  , " -L$ERL_EI_LIBDIR -lerl_interface -lei"},
      {"ERLANG_ARCH"  , rebar_utils:wordsize()},
      {"ERLANG_TARGET", rebar_utils:get_arch()},
 
